@@ -2,6 +2,12 @@
 
 一个供个人使用的离线 Flutter 记账应用。无需注册或登录，账本保存在设备本地的 `ledger.json` 文件中，不使用数据库。
 
+## 下载 Android 安装包
+
+[下载好好记账 v1.0.0 APK](https://github.com/NOTISMOON/mybill/releases/download/v1.0.0/haohao-jizhang-v1.0.0-build2.apk)（适用于 Android 7.0 及以上）。其他版本可在 [Releases 页面](https://github.com/NOTISMOON/mybill/releases)查看。
+
+当前安装包使用项目开发签名，后续覆盖安装需要沿用同一签名。升级或卸载前建议先在“我的”导出账本备份。
+
 ## 功能
 
 - **账单**：新增、编辑、删除收入与支出；按月份查看收支和结余；按类型、分类及备注筛选。账单、统计、我的使用底部悬浮胶囊导航切换。
