@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/formatters/currency.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../app/app_router.dart';
 import '../../ledger/data/ledger_store.dart';
+import '../../ledger/presentation/widgets/principal_editor_dialog.dart';
 import '../data/appearance_store.dart';
 import '../data/backup_service.dart';
 
@@ -14,6 +16,14 @@ class ProfilePage extends StatelessWidget {
   final LedgerStore store;
   final AppearanceStore appearance;
   static const _backup = BackupService();
+
+  Future<void> _editPrincipal(BuildContext context) async {
+    await showPrincipalEditorDialog(
+      context,
+      principalCents: store.principalCents,
+      onSave: store.setPrincipalCents,
+    );
+  }
 
   void _message(BuildContext context, String value) {
     if (!context.mounted) return;
@@ -59,7 +69,9 @@ class ProfilePage extends StatelessWidget {
           content: Text(
             '文件中有 ${preview.totalEntries} 笔记录，其中 ${preview.newEntries} 笔是新记录，'
             '${preview.duplicateEntries} 笔 ID 已存在。\n\n'
-            '合并会按 ID 更新重复记录；替换会先备份当前账本，再用导入文件覆盖。',
+            '文件中的期初本金：${formatCny(preview.principalCents)}。\n\n'
+            '合并会按 ID 更新重复记录，并保留当前本金；替换会先备份当前账本，'
+            '再用文件中的记录和本金覆盖。旧版备份的本金按 ¥0.00 处理。',
           ),
           actions: [
             TextButton(
@@ -152,6 +164,28 @@ class ProfilePage extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 28),
+          Text(
+            '资金',
+            style: TextStyle(
+              color: AppColors.primary(context),
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.panel(context),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: _ActionTile(
+              icon: Icons.account_balance_wallet_outlined,
+              title: '设置本金',
+              subtitle: '期初本金 ${formatCny(store.principalCents)}',
+              onTap: () => _editPrincipal(context),
             ),
           ),
           const SizedBox(height: 28),
@@ -253,13 +287,13 @@ class ProfilePage extends StatelessWidget {
               color: AppColors.panel(context),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: const Column(
+            child: Column(
               children: [
-                _InfoRow('货币', '人民币 CNY'),
-                SizedBox(height: 13),
-                _InfoRow('金额精度', '分（整数）'),
-                SizedBox(height: 13),
-                _InfoRow('账本版本', '1'),
+                const _InfoRow('货币', '人民币 CNY'),
+                const SizedBox(height: 13),
+                const _InfoRow('金额精度', '分（整数）'),
+                const SizedBox(height: 13),
+                _InfoRow('账本版本', '${LedgerStore.schemaVersion}'),
               ],
             ),
           ),

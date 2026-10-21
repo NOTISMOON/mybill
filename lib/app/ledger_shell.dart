@@ -105,8 +105,11 @@ class _LedgerShellState extends State<LedgerShell> {
                 data: _moduleTheme(AppearanceModule.ledger),
                 child: LedgerPage(
                   entries: store.entries,
+                  principalCents: store.principalCents,
+                  totalAssetsCents: store.totalAssetsCents,
                   month: month,
                   onMonthChanged: (value) => setState(() => month = value),
+                  onSetPrincipal: store.setPrincipalCents,
                   onAdd: () => openEditor(),
                   onEdit: openEditor,
                   onDelete: (entry) async {

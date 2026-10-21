@@ -5,6 +5,8 @@ import '../../../core/theme/app_theme.dart';
 import '../domain/ledger_entry.dart';
 import 'widgets/entry_tile.dart';
 import 'widgets/month_summary_card.dart';
+import 'widgets/principal_editor_dialog.dart';
+import 'widgets/total_assets_card.dart';
 
 enum _EntryFilter { all, expense, income }
 
@@ -12,16 +14,22 @@ class LedgerPage extends StatefulWidget {
   const LedgerPage({
     super.key,
     required this.entries,
+    required this.principalCents,
+    required this.totalAssetsCents,
     required this.month,
     required this.onMonthChanged,
+    required this.onSetPrincipal,
     required this.onAdd,
     required this.onEdit,
     required this.onDelete,
   });
 
   final List<LedgerEntry> entries;
+  final int principalCents;
+  final int totalAssetsCents;
   final DateTime month;
   final ValueChanged<DateTime> onMonthChanged;
+  final Future<void> Function(int) onSetPrincipal;
   final VoidCallback onAdd;
   final ValueChanged<LedgerEntry> onEdit;
   final Future<void> Function(LedgerEntry) onDelete;
@@ -64,6 +72,14 @@ class _LedgerPageState extends State<LedgerPage> {
   void _shiftMonth(int delta) => widget.onMonthChanged(
     DateTime(widget.month.year, widget.month.month + delta),
   );
+
+  Future<void> _editPrincipal() async {
+    await showPrincipalEditorDialog(
+      context,
+      principalCents: widget.principalCents,
+      onSave: widget.onSetPrincipal,
+    );
+  }
 
   Future<void> _confirmDelete(LedgerEntry entry) async {
     final approved = await showDialog<bool>(
@@ -162,6 +178,13 @@ class _LedgerPageState extends State<LedgerPage> {
             const Text(
               '看清每一笔，过好每一天',
               style: TextStyle(color: AppColors.muted, fontSize: 13),
+            ),
+            const SizedBox(height: 25),
+            TotalAssetsCard(
+              totalAssetsCents: widget.totalAssetsCents,
+              principalCents: widget.principalCents,
+              netCashFlowCents: widget.totalAssetsCents - widget.principalCents,
+              onEditPrincipal: _editPrincipal,
             ),
             const SizedBox(height: 25),
             Row(

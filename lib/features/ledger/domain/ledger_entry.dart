@@ -89,11 +89,13 @@ class ImportPreview {
     required this.totalEntries,
     required this.newEntries,
     required this.duplicateEntries,
+    required this.principalCents,
   });
 
   final int totalEntries;
   final int newEntries;
   final int duplicateEntries;
+  final int principalCents;
 }
 
 Map<String, dynamic> _requireObject(Object? value, String name) {

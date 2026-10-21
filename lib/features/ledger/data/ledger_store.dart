@@ -10,17 +10,45 @@ import '../domain/ledger_entry.dart';
 class LedgerStore extends ChangeNotifier {
   LedgerStore({this.directory});
 
-  static const int schemaVersion = 1;
+  static const int schemaVersion = 2;
 
   final Directory? directory;
   List<LedgerEntry> _entries = const [];
+  int _principalCents = 0;
   Future<void> _pending = Future<void>.value();
   bool _loaded = false;
 
   List<LedgerEntry> get entries => List<LedgerEntry>.unmodifiable(_entries);
+  int get principalCents => _principalCents;
+
+  /// Opening principal plus every recorded income, less every expense.
+  int get totalAssetsCents => _entries.fold<int>(
+    _principalCents,
+    (total, entry) =>
+        total +
+        (entry.type == EntryType.income
+            ? entry.amountCents
+            : -entry.amountCents),
+  );
 
   /// Reads disk data, creating an empty ledger file on first use.
   Future<void> load() => _serially(_loadFromDisk);
+
+  /// Sets the opening principal without creating a transaction.
+  Future<void> setPrincipalCents(int value) {
+    if (value < 0) {
+      throw ArgumentError.value(
+        value,
+        'value',
+        'Principal must not be negative.',
+      );
+    }
+    return _serially(() async {
+      await _ensureLoaded();
+      if (_principalCents == value) return;
+      await _save(_entries, principalCents: value);
+    });
+  }
 
   /// Inserts or replaces an entry with the same id, then saves it to disk.
   Future<void> upsert(LedgerEntry entry) => _serially(() async {
@@ -49,33 +77,35 @@ class LedgerStore extends ChangeNotifier {
   ImportPreview previewImport(String json) {
     final incoming = _decode(json);
     final existingIds = _entries.map((entry) => entry.id).toSet();
-    final duplicateCount = incoming
+    final duplicateCount = incoming.entries
         .where((entry) => existingIds.contains(entry.id))
         .length;
     return ImportPreview(
-      totalEntries: incoming.length,
-      newEntries: incoming.length - duplicateCount,
+      totalEntries: incoming.entries.length,
+      newEntries: incoming.entries.length - duplicateCount,
       duplicateEntries: duplicateCount,
+      principalCents: incoming.principalCents,
     );
   }
 
-  /// Replaces all entries, or merges by id with imported entries taking priority.
+  /// Replaces entries and principal, or merges entries while keeping local principal.
   Future<ImportPreview> importJson(String json, {required bool replace}) {
     final incoming = _decode(json);
     return _serially(() async {
       await _ensureLoaded();
       final existingIds = _entries.map((entry) => entry.id).toSet();
-      final duplicateCount = incoming
+      final duplicateCount = incoming.entries
           .where((entry) => existingIds.contains(entry.id))
           .length;
       final preview = ImportPreview(
-        totalEntries: incoming.length,
-        newEntries: incoming.length - duplicateCount,
+        totalEntries: incoming.entries.length,
+        newEntries: incoming.entries.length - duplicateCount,
         duplicateEntries: duplicateCount,
+        principalCents: incoming.principalCents,
       );
-      final next = replace ? [...incoming] : [..._entries];
+      final next = replace ? [...incoming.entries] : [..._entries];
       if (!replace) {
-        for (final entry in incoming) {
+        for (final entry in incoming.entries) {
           final index = next.indexWhere((existing) => existing.id == entry.id);
           if (index == -1) {
             next.add(entry);
@@ -84,13 +114,16 @@ class LedgerStore extends ChangeNotifier {
           }
         }
       }
-      await _save(next);
+      await _save(
+        next,
+        principalCents: replace ? incoming.principalCents : _principalCents,
+      );
       return preview;
     });
   }
 
-  /// Exports the currently loaded entries as a portable, readable JSON string.
-  String getExportJson() => _encode(_entries);
+  /// Exports the currently loaded principal and entries as portable JSON.
+  String getExportJson() => _encode(_entries, _principalCents);
 
   Future<void> _ensureLoaded() async {
     if (!_loaded) await _loadFromDisk();
@@ -99,28 +132,38 @@ class LedgerStore extends ChangeNotifier {
   Future<void> _loadFromDisk() async {
     final file = await _ledgerFile();
     if (!await file.exists()) {
-      await _save(<LedgerEntry>[]);
+      await _save(<LedgerEntry>[], principalCents: 0);
       return;
     }
     final next = _decode(await file.readAsString());
-    _entries = List<LedgerEntry>.unmodifiable(next);
+    if (next.schemaVersion != schemaVersion) {
+      await _save(next.entries, principalCents: next.principalCents);
+      return;
+    }
+    _entries = List<LedgerEntry>.unmodifiable(next.entries);
+    _principalCents = next.principalCents;
     _loaded = true;
     notifyListeners();
   }
 
-  Future<void> _save(List<LedgerEntry> next) async {
+  Future<void> _save(List<LedgerEntry> next, {int? principalCents}) async {
+    final nextPrincipalCents = principalCents ?? _principalCents;
     final file = await _ledgerFile();
     await file.parent.create(recursive: true);
     final temporary = File(
       '${file.path}.${DateTime.now().microsecondsSinceEpoch}.tmp',
     );
     try {
-      await temporary.writeAsString(_encode(next), flush: true);
+      await temporary.writeAsString(
+        _encode(next, nextPrincipalCents),
+        flush: true,
+      );
       await temporary.rename(file.path);
     } finally {
       if (await temporary.exists()) await temporary.delete();
     }
     _entries = List<LedgerEntry>.unmodifiable(next);
+    _principalCents = nextPrincipalCents;
     _loaded = true;
     notifyListeners();
   }
@@ -139,13 +182,14 @@ class LedgerStore extends ChangeNotifier {
     return result;
   }
 
-  static String _encode(List<LedgerEntry> entries) =>
+  static String _encode(List<LedgerEntry> entries, int principalCents) =>
       const JsonEncoder.withIndent('  ').convert({
         'schemaVersion': schemaVersion,
+        'principalCents': principalCents,
         'entries': entries.map((entry) => entry.toJson()).toList(),
       });
 
-  static List<LedgerEntry> _decode(String source) {
+  static _LedgerData _decode(String source) {
     final Object? decoded;
     try {
       decoded = jsonDecode(source);
@@ -153,10 +197,22 @@ class LedgerStore extends ChangeNotifier {
       throw FormatException('Invalid ledger JSON: ${error.message}');
     }
     final data = _requireObject(decoded, 'ledger');
-    _requireKeys(data, const {'schemaVersion', 'entries'}, 'ledger');
-    if (data['schemaVersion'] is! int ||
-        data['schemaVersion'] != schemaVersion) {
+    final version = data['schemaVersion'];
+    if (version is! int || (version != 1 && version != schemaVersion)) {
       throw const FormatException('Unsupported ledger schemaVersion.');
+    }
+    _requireKeys(
+      data,
+      version == 1
+          ? const {'schemaVersion', 'entries'}
+          : const {'schemaVersion', 'principalCents', 'entries'},
+      'ledger',
+    );
+    final principalCents = version == 1 ? 0 : data['principalCents'];
+    if (principalCents is! int || principalCents < 0) {
+      throw const FormatException(
+        'Ledger principalCents must be a non-negative integer.',
+      );
     }
     final rawEntries = data['entries'];
     if (rawEntries is! List) {
@@ -171,8 +227,16 @@ class LedgerStore extends ChangeNotifier {
         throw FormatException('Duplicate entry id: ${entry.id}');
       }
     }
-    return entries;
+    return _LedgerData(version, principalCents, entries);
   }
+}
+
+class _LedgerData {
+  const _LedgerData(this.schemaVersion, this.principalCents, this.entries);
+
+  final int schemaVersion;
+  final int principalCents;
+  final List<LedgerEntry> entries;
 }
 
 Map<String, dynamic> _requireObject(Object? value, String name) {
