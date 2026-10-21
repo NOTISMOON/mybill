@@ -4,15 +4,15 @@
 
 ## 下载 Android 安装包
 
-[下载好好记账 v1.1.0 APK](https://github.com/NOTISMOON/mybill/releases/download/v1.1.0/haohao-jizhang-v1.1.0-build3.apk)（适用于 Android 7.0 及以上）。其他版本可在 [Releases 页面](https://github.com/NOTISMOON/mybill/releases)查看。
+[下载好好记账 v1.2.0 APK](https://github.com/NOTISMOON/mybill/releases/download/v1.2.0/haohao-jizhang-v1.2.0-build4.apk)（适用于 Android 7.0 及以上）。其他版本可在 [Releases 页面](https://github.com/NOTISMOON/mybill/releases)查看。
 
 当前安装包使用项目开发签名，后续覆盖安装需要沿用同一签名。升级或卸载前建议先在“我的”导出账本备份。
 
 ## 功能
 
-- **账单**：新增、编辑、删除收入与支出；按月份查看收支和结余；按类型、分类及备注筛选。账单、统计、我的使用底部悬浮胶囊导航切换。
+- **账单**：新增、编辑、删除收入与支出；按月份查看收支和结余。明细默认选中今天，可切换日期；所选日的同一分类收入或支出合并显示金额与笔数，点开查看每笔记录，再点击单笔编辑。支持按收支类型筛选和搜索分类或备注。账单、统计、我的使用底部悬浮胶囊导航切换。
 - **总资产**：可在首页或“我的 → 设置本金”输入期初本金。总资产＝期初本金＋全部收入－全部支出，始终按整本账计算；切换月份只改变本月结余，不改变总资产。
-- **统计**：月度每日趋势与支出分类占比；年度 12 个月收支对比，点击月份可返回该月账单。
+- **统计**：月度每日趋势与支出分类占比；点击“支出去向”可进入所选月份的每日支出总额页面，未支出的日期也会显示为 ¥0.00。年度 12 个月收支对比，点击月份可返回该月账单。
 - **我的**：把 JSON 备份保存到手机本地文件夹，或通过系统分享发送；导入时预览记录数，选择按 ID 合并或替换。替换前自动在应用内保存原账本。
 - **个性化外观**：在“我的 → 外观偏好”选择壁纸，自动搭配模块颜色；账单、统计、记一笔、我的、底部导航可分别修改颜色与面板不透明度。壁纸遮罩可从 0% 调整，文字和图标保持实色。设置保存在本机。
 - **人民币**：输入和展示以元为单位，JSON 内以整数分保存金额。例如 ¥12.50 存为 `1250`。
@@ -39,7 +39,8 @@ lib/
     ledger/domain/                       流水模型与 JSON 字段
     ledger/data/                         本地账本读写
     ledger/presentation/                 账单页、录入页、可复用组件
-    statistics/presentation/             月度与年度统计
+    statistics/domain/                   月度每日支出汇总
+    statistics/presentation/             月度与年度统计、每日支出页面
     profile/data/                        JSON 备份与外观设置持久化
     profile/domain/                      外观模块与配置模型
     profile/presentation/                个人中心与独立外观偏好页面

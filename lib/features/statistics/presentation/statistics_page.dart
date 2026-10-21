@@ -21,12 +21,14 @@ class StatisticsPage extends StatefulWidget {
     required this.month,
     required this.onMonthChanged,
     required this.onOpenMonth,
+    required this.onOpenDailyExpense,
   });
 
   final List<LedgerEntry> entries;
   final DateTime month;
   final ValueChanged<DateTime> onMonthChanged;
   final ValueChanged<DateTime> onOpenMonth;
+  final ValueChanged<DateTime> onOpenDailyExpense;
 
   @override
   State<StatisticsPage> createState() => _StatisticsPageState();
@@ -240,7 +242,8 @@ class _StatisticsPageState extends State<StatisticsPage> {
       ],
       _Panel(
         title: '支出去向',
-        subtitle: '按分类查看本月花费',
+        subtitle: '按分类查看本月花费 · 点击查看每日支出',
+        onTap: () => widget.onOpenDailyExpense(DateTime(year, month, 1)),
         child: sortedCategories.isEmpty
             ? const _PanelEmpty(
                 icon: Icons.pie_chart_outline_rounded,
@@ -525,44 +528,67 @@ class _Panel extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.child,
+    this.onTap,
   });
 
   final String title;
   final String subtitle;
   final Widget child;
+  final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.fromLTRB(20, 21, 20, 22),
-    decoration: BoxDecoration(
-      color: AppColors.panel(context),
+  Widget build(BuildContext context) => Material(
+    color: Colors.transparent,
+    child: InkWell(
+      key: onTap == null ? null : const Key('statistics.expenseDestination'),
+      onTap: onTap,
       borderRadius: BorderRadius.circular(24),
-      border: Border.all(color: const Color(0xFFF0F1ED)),
-      boxShadow: [
-        BoxShadow(
-          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.035),
-          blurRadius: 18,
-          offset: const Offset(0, 7),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(20, 21, 20, 22),
+        decoration: BoxDecoration(
+          color: AppColors.panel(context),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: const Color(0xFFF0F1ED)),
+          boxShadow: [
+            BoxShadow(
+              color: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.035),
+              blurRadius: 18,
+              offset: const Offset(0, 7),
+            ),
+          ],
         ),
-      ],
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.primary,
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                if (onTap != null)
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(subtitle, style: const TextStyle(color: _muted, fontSize: 12)),
+            const SizedBox(height: 22),
+            child,
+          ],
         ),
-        const SizedBox(height: 5),
-        Text(subtitle, style: const TextStyle(color: _muted, fontSize: 12)),
-        const SizedBox(height: 22),
-        child,
-      ],
+      ),
     ),
   );
 }

@@ -9,9 +9,15 @@ import 'package:bill/core/theme/app_theme.dart';
 /// Push this widget as a route and pass [onSave] (usually LedgerStore.upsert).
 /// The route closes only after the save finishes successfully.
 class EntryEditorPage extends StatefulWidget {
-  const EntryEditorPage({super.key, this.initial, required this.onSave});
+  const EntryEditorPage({
+    super.key,
+    this.initial,
+    this.initialDate,
+    required this.onSave,
+  });
 
   final LedgerEntry? initial;
+  final DateTime? initialDate;
   final Future<void> Function(LedgerEntry) onSave;
 
   @override
@@ -59,7 +65,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     final initial = widget.initial;
     _type = initial?.type ?? EntryType.expense;
     _category = initial?.category ?? _expenses.first.name;
-    _date = initial?.date ?? DateTime.now();
+    _date = initial?.date ?? widget.initialDate ?? DateTime.now();
     _amountController = TextEditingController(
       text: initial == null ? '' : _formatCentsForInput(initial.amountCents),
     );

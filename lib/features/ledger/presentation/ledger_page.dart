@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/formatters/currency.dart';
 import '../../../core/theme/app_theme.dart';
 import '../domain/ledger_entry.dart';
-import 'widgets/entry_tile.dart';
+import 'widgets/daily_category_group_card.dart';
 import 'widgets/month_summary_card.dart';
 import 'widgets/principal_editor_dialog.dart';
 import 'widgets/total_assets_card.dart';
@@ -30,7 +30,7 @@ class LedgerPage extends StatefulWidget {
   final DateTime month;
   final ValueChanged<DateTime> onMonthChanged;
   final Future<void> Function(int) onSetPrincipal;
-  final VoidCallback onAdd;
+  final ValueChanged<DateTime> onAdd;
   final ValueChanged<LedgerEntry> onEdit;
   final Future<void> Function(LedgerEntry) onDelete;
 
@@ -41,11 +41,12 @@ class LedgerPage extends StatefulWidget {
 class _LedgerPageState extends State<LedgerPage> {
   final TextEditingController _search = TextEditingController();
   _EntryFilter _filter = _EntryFilter.all;
-  String? _category;
+  late DateTime _selectedDate;
 
   @override
   void initState() {
     super.initState();
+    _selectedDate = _dateInMonth(DateTime.now(), widget.month);
     _search.addListener(_refresh);
   }
 
@@ -54,7 +55,10 @@ class _LedgerPageState extends State<LedgerPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.month.year != widget.month.year ||
         oldWidget.month.month != widget.month.month) {
-      _category = null;
+      if (_selectedDate.year != widget.month.year ||
+          _selectedDate.month != widget.month.month) {
+        _selectedDate = _dateInMonth(_selectedDate, widget.month);
+      }
     }
   }
 
@@ -72,6 +76,35 @@ class _LedgerPageState extends State<LedgerPage> {
   void _shiftMonth(int delta) => widget.onMonthChanged(
     DateTime(widget.month.year, widget.month.month + delta),
   );
+
+  void _selectDate(DateTime date) {
+    final day = DateTime(date.year, date.month, date.day);
+    setState(() => _selectedDate = day);
+    if (day.year != widget.month.year || day.month != widget.month.month) {
+      widget.onMonthChanged(DateTime(day.year, day.month));
+    }
+  }
+
+  void _shiftDay(int delta) => _selectDate(
+    DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day + delta,
+    ),
+  );
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(1),
+      lastDate: DateTime(9999, 12, 31),
+      helpText: '选择查看日期',
+      cancelText: '取消',
+      confirmText: '确定',
+    );
+    if (picked != null && mounted) _selectDate(picked);
+  }
 
   Future<void> _editPrincipal() async {
     await showPrincipalEditorDialog(
@@ -128,37 +161,50 @@ class _LedgerPageState extends State<LedgerPage> {
         .toList();
     final income = _sum(monthly, EntryType.income);
     final expense = _sum(monthly, EntryType.expense);
-    final categories = monthly.map((entry) => entry.category).toSet().toList()
-      ..sort();
+    final daily = monthly
+        .where(
+          (entry) =>
+              entry.date.day == _selectedDate.day &&
+              entry.date.month == _selectedDate.month &&
+              entry.date.year == _selectedDate.year,
+        )
+        .toList();
     final query = _search.text.trim().toLowerCase();
-    final visible =
-        monthly.where((entry) {
-          if (_filter == _EntryFilter.expense &&
-              entry.type != EntryType.expense) {
-            return false;
-          }
-          if (_filter == _EntryFilter.income &&
-              entry.type != EntryType.income) {
-            return false;
-          }
-          if (_category != null && entry.category != _category) {
-            return false;
-          }
-          if (query.isNotEmpty &&
-              !entry.category.toLowerCase().contains(query) &&
-              !entry.note.toLowerCase().contains(query)) {
-            return false;
-          }
-          return true;
-        }).toList()..sort((a, b) {
-          final byDate = b.date.compareTo(a.date);
-          return byDate != 0 ? byDate : b.id.compareTo(a.id);
-        });
-    final grouped = <DateTime, List<LedgerEntry>>{};
+    final visible = daily.where((entry) {
+      if (_filter == _EntryFilter.expense && entry.type != EntryType.expense) {
+        return false;
+      }
+      if (_filter == _EntryFilter.income && entry.type != EntryType.income) {
+        return false;
+      }
+      if (query.isNotEmpty &&
+          !entry.category.toLowerCase().contains(query) &&
+          !entry.note.toLowerCase().contains(query)) {
+        return false;
+      }
+      return true;
+    }).toList()..sort((a, b) => b.id.compareTo(a.id));
+    final grouped = <(EntryType, String), List<LedgerEntry>>{};
     for (final entry in visible) {
-      final day = DateTime(entry.date.year, entry.date.month, entry.date.day);
-      grouped.putIfAbsent(day, () => []).add(entry);
+      grouped.putIfAbsent((entry.type, entry.category), () => []).add(entry);
     }
+    final groups = grouped.entries.toList()
+      ..sort((a, b) {
+        final aTypeOrder = a.key.$1 == EntryType.expense ? 0 : 1;
+        final bTypeOrder = b.key.$1 == EntryType.expense ? 0 : 1;
+        final byType = aTypeOrder.compareTo(bTypeOrder);
+        if (byType != 0) return byType;
+        final aTotal = a.value.fold<int>(
+          0,
+          (sum, entry) => sum + entry.amountCents,
+        );
+        final bTotal = b.value.fold<int>(
+          0,
+          (sum, entry) => sum + entry.amountCents,
+        );
+        final byAmount = bTotal.compareTo(aTotal);
+        return byAmount != 0 ? byAmount : a.key.$2.compareTo(b.key.$2);
+      });
 
     return Center(
       child: ConstrainedBox(
@@ -209,7 +255,7 @@ class _LedgerPageState extends State<LedgerPage> {
             Row(
               children: [
                 Text(
-                  '收支明细',
+                  '当天明细',
                   style: TextStyle(
                     color: AppColors.primary(context),
                     fontSize: 19,
@@ -224,6 +270,52 @@ class _LedgerPageState extends State<LedgerPage> {
               ],
             ),
             const SizedBox(height: 14),
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.panel(context),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  IconButton(
+                    key: const Key('ledger.previousDay'),
+                    tooltip: '前一天',
+                    onPressed: () => _shiftDay(-1),
+                    icon: Icon(
+                      Icons.chevron_left_rounded,
+                      color: AppColors.primary(context),
+                    ),
+                  ),
+                  Expanded(
+                    child: TextButton.icon(
+                      key: const Key('ledger.datePicker'),
+                      onPressed: _pickDate,
+                      icon: const Icon(Icons.calendar_month_outlined, size: 18),
+                      label: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          '${_selectedDate.year}年${_selectedDate.month}月'
+                          '${_selectedDate.day}日 · ${_weekday(_selectedDate.weekday)}',
+                        ),
+                      ),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primary(context),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    key: const Key('ledger.nextDay'),
+                    tooltip: '后一天',
+                    onPressed: () => _shiftDay(1),
+                    icon: Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppColors.primary(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -233,50 +325,6 @@ class _LedgerPageState extends State<LedgerPage> {
                   _filterChip('支出', _EntryFilter.expense),
                   const SizedBox(width: 8),
                   _filterChip('收入', _EntryFilter.income),
-                  const SizedBox(width: 8),
-                  PopupMenuButton<String>(
-                    onSelected: (value) => setState(
-                      () => _category = value == '__all__' ? null : value,
-                    ),
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(
-                        value: '__all__',
-                        child: Text('全部分类'),
-                      ),
-                      ...categories.map(
-                        (value) =>
-                            PopupMenuItem(value: value, child: Text(value)),
-                      ),
-                    ],
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 9,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.panel(context),
-                        border: Border.all(color: AppColors.line),
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(
-                            _category ?? '分类',
-                            style: TextStyle(
-                              color: AppColors.primary(context),
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(
-                            Icons.keyboard_arrow_down_rounded,
-                            color: AppColors.muted,
-                            size: 16,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -284,7 +332,7 @@ class _LedgerPageState extends State<LedgerPage> {
             TextField(
               controller: _search,
               decoration: InputDecoration(
-                hintText: '搜索分类或备注',
+                hintText: '搜索当天分类或备注',
                 hintStyle: const TextStyle(
                   color: AppColors.muted,
                   fontSize: 14,
@@ -310,54 +358,27 @@ class _LedgerPageState extends State<LedgerPage> {
             ),
             const SizedBox(height: 12),
             if (visible.isEmpty)
-              _emptyBills(monthly.isEmpty)
+              _emptyBills(
+                noMonthlyEntries: monthly.isEmpty,
+                noDailyEntries: daily.isEmpty,
+              )
             else
-              for (final group in grouped.entries) ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(2, 16, 2, 10),
-                  child: Row(
-                    children: [
-                      Text(
-                        '${group.key.month}月${group.key.day}日',
-                        style: TextStyle(
-                          color: AppColors.primary(context),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _weekday(group.key.weekday),
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
+              for (final group in groups) ...[
+                DailyCategoryGroupCard(
+                  key: ValueKey((
+                    _selectedDate.year,
+                    _selectedDate.month,
+                    _selectedDate.day,
+                    group.key.$1,
+                    group.key.$2,
+                  )),
+                  type: group.key.$1,
+                  category: group.key.$2,
+                  entries: group.value,
+                  onEdit: widget.onEdit,
+                  onDelete: _confirmDelete,
                 ),
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.panel(context),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Column(
-                    children: [
-                      for (var i = 0; i < group.value.length; i++) ...[
-                        if (i > 0)
-                          const Padding(
-                            padding: EdgeInsets.only(left: 66),
-                            child: Divider(height: 1, color: AppColors.line),
-                          ),
-                        EntryTile(
-                          entry: group.value[i],
-                          onEdit: () => widget.onEdit(group.value[i]),
-                          onDelete: () => _confirmDelete(group.value[i]),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
+                const SizedBox(height: 10),
               ],
           ],
         ),
@@ -404,7 +425,10 @@ class _LedgerPageState extends State<LedgerPage> {
     );
   }
 
-  Widget _emptyBills(bool noMonthlyEntries) => Padding(
+  Widget _emptyBills({
+    required bool noMonthlyEntries,
+    required bool noDailyEntries,
+  }) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 48),
     child: Column(
       children: [
@@ -423,7 +447,11 @@ class _LedgerPageState extends State<LedgerPage> {
         ),
         const SizedBox(height: 18),
         Text(
-          noMonthlyEntries ? '这个月还没有账单' : '没有符合条件的记录',
+          noMonthlyEntries
+              ? '这个月还没有账单'
+              : noDailyEntries
+              ? '这一天还没有账单'
+              : '没有符合条件的记录',
           style: TextStyle(
             color: AppColors.primary(context),
             fontSize: 17,
@@ -432,13 +460,13 @@ class _LedgerPageState extends State<LedgerPage> {
         ),
         const SizedBox(height: 6),
         Text(
-          noMonthlyEntries ? '从记下第一笔开始吧' : '试试调整筛选条件',
+          noDailyEntries ? '选择其他日期，或记下这一天的第一笔' : '试试调整筛选条件',
           style: const TextStyle(color: AppColors.muted, fontSize: 13),
         ),
-        if (noMonthlyEntries) ...[
+        if (noDailyEntries) ...[
           const SizedBox(height: 20),
           FilledButton.icon(
-            onPressed: widget.onAdd,
+            onPressed: () => widget.onAdd(_selectedDate),
             icon: const Icon(Icons.add_rounded),
             label: const Text('记一笔'),
           ),
@@ -454,3 +482,12 @@ int _sum(Iterable<LedgerEntry> entries, EntryType type) => entries
 
 String _weekday(int value) =>
     const ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][value - 1];
+
+DateTime _dateInMonth(DateTime preferred, DateTime month) {
+  final lastDay = DateTime(month.year, month.month + 1, 0).day;
+  return DateTime(
+    month.year,
+    month.month,
+    preferred.day > lastDay ? lastDay : preferred.day,
+  );
+}

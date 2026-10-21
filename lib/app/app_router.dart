@@ -5,11 +5,25 @@ import '../features/ledger/presentation/entry_editor_page.dart';
 import '../features/profile/data/appearance_store.dart';
 import '../features/profile/domain/appearance_module.dart';
 import '../features/profile/presentation/appearance_preferences_page.dart';
+import '../features/statistics/presentation/daily_expense_page.dart';
 import '../core/theme/app_theme.dart';
 
 abstract final class AppRoutes {
   static const entryEditor = '/entry-editor';
   static const appearancePreferences = '/appearance-preferences';
+  static const dailyExpense = '/daily-expense';
+}
+
+class DailyExpenseRouteArguments {
+  const DailyExpenseRouteArguments({
+    required this.month,
+    required this.entries,
+    required this.appearance,
+  });
+
+  final DateTime month;
+  final List<LedgerEntry> entries;
+  final AppearanceStore appearance;
 }
 
 class EntryEditorRouteArguments {
@@ -17,15 +31,41 @@ class EntryEditorRouteArguments {
     required this.onSave,
     required this.appearance,
     this.initial,
+    this.initialDate,
   });
 
   final LedgerEntry? initial;
+  final DateTime? initialDate;
   final Future<void> Function(LedgerEntry) onSave;
   final AppearanceStore appearance;
 }
 
 abstract final class AppRouter {
   static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
+    if (settings.name == AppRoutes.dailyExpense) {
+      final args = settings.arguments;
+      if (args is! DailyExpenseRouteArguments) {
+        throw ArgumentError(
+          'Daily expense route requires DailyExpenseRouteArguments.',
+        );
+      }
+      return MaterialPageRoute<void>(
+        settings: settings,
+        builder: (_) {
+          final statistics = args.appearance.module(
+            AppearanceModule.statistics,
+          );
+          return Theme(
+            data: AppTheme.light(
+              statistics.color,
+              hasBackground: args.appearance.backgroundBytes != null,
+              panelOpacity: statistics.panelOpacity,
+            ),
+            child: DailyExpensePage(month: args.month, entries: args.entries),
+          );
+        },
+      );
+    }
     if (settings.name == AppRoutes.appearancePreferences) {
       final appearance = settings.arguments;
       if (appearance is! AppearanceStore) {
@@ -65,7 +105,11 @@ abstract final class AppRouter {
             hasBackground: args.appearance.backgroundBytes != null,
             panelOpacity: editor.panelOpacity,
           ),
-          child: EntryEditorPage(initial: args.initial, onSave: args.onSave),
+          child: EntryEditorPage(
+            initial: args.initial,
+            initialDate: args.initialDate,
+            onSave: args.onSave,
+          ),
         );
       },
     );

@@ -44,12 +44,24 @@ class _LedgerShellState extends State<LedgerShell> {
     if (mounted) setState(() {});
   }
 
-  void openEditor([LedgerEntry? entry]) {
+  void openEditor([LedgerEntry? entry, DateTime? date]) {
     Navigator.of(context).pushNamed(
       AppRoutes.entryEditor,
       arguments: EntryEditorRouteArguments(
         initial: entry,
+        initialDate: date,
         onSave: store.upsert,
+        appearance: widget.appearance,
+      ),
+    );
+  }
+
+  void openDailyExpense(DateTime selectedMonth) {
+    Navigator.of(context).pushNamed(
+      AppRoutes.dailyExpense,
+      arguments: DailyExpenseRouteArguments(
+        month: selectedMonth,
+        entries: store.entries,
         appearance: widget.appearance,
       ),
     );
@@ -110,7 +122,7 @@ class _LedgerShellState extends State<LedgerShell> {
                   month: month,
                   onMonthChanged: (value) => setState(() => month = value),
                   onSetPrincipal: store.setPrincipalCents,
-                  onAdd: () => openEditor(),
+                  onAdd: (date) => openEditor(null, date),
                   onEdit: openEditor,
                   onDelete: (entry) async {
                     await store.remove(entry.id);
@@ -127,6 +139,7 @@ class _LedgerShellState extends State<LedgerShell> {
                     month = value;
                     tab = 0;
                   }),
+                  onOpenDailyExpense: openDailyExpense,
                 ),
               ),
               Theme(
